@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Upload Student CSV (GZIP)</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 30px;
+            background: #f4f4f4;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px #ccc;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            padding: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 20px;
+            font-size: 16px;
+            background: #007bff;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        .msg {
+            display: none;
+            padding: 12px;
+            margin-top: 20px;
+            background: #e0ffe0;
+            border-left: 4px solid green;
+        }
+
+        .error {
+            background: #ffe0e0;
+            border-left: 4px solid red;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Upload CSV → Convert → GZIP → Send</h2>
+
+    <input type="file" id="fileInput" accept=".csv">
+    <button onclick="uploadCSV()">Upload CSV</button>
+
+    <div id="message" class="msg"></div>
+</div>
+
+<script>
+    function uploadCSV() {
+        const fileInput = document.getElementById("fileInput");
+        const msg = document.getElementById("message");
+        msg.style.display = "none";
+
+        if (!fileInput.files.length) {
+            return showError("Please select a CSV file.");
+        }
+
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+
+        reader.onload = function(event) {
+            const csvText = event.target.result;
+
+            const jsonArray = csvToJson(csvText);
+
+            if (!jsonArray.length) {
+                return showError("Invalid CSV or empty file.");
+            }
+
+            const jsonString = JSON.stringify(jsonArray);
+            const compressed = pako.gzip(jsonString);
+
+            fetch("http://localhost:8080/api/students/upload/many", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Content-Encoding": "gzip"
+                },
+                body: compressed
+            })
+            .then(res => res.json())
+            .then(data => {
+                msg.classList.remove("error");
+                msg.innerText = "CSV uploaded and saved successfully!";
+                msg.style.display = "block";
+            })
+            .catch(err => {
+                showError("Upload failed: " + err.message);
+            });
+        };
+
+        reader.readAsText(file);
+    }
+
+    // CSV → JSON converter
+    function csvToJson(csv) {
+        const rows = csv.trim().split("\n");
+        const headers = rows.shift().split(",");
+
+        return rows.map(row => {
+            const values = row.split(",");
+            const obj = {};
+            headers.forEach((h, idx) => {
+                obj[h.trim()] = values[idx]?.trim();
+            });
+            return obj;
+        });
+    }
+
+    function showError(message) {
+        const msg = document.getElementById("message");
+        msg.classList.add("error");
+        msg.innerText = message;
+        msg.style.display = "block";
+    }
+</script>
+
+</body>
+</html>
